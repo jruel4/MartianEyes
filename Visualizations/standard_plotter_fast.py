@@ -79,8 +79,9 @@ def update_plot(event):
         if 'EventEmitter loop detected' in err.args[0]: #TODO handle this correctly
             pass
 
+channel=0
 def update_data():
-    global y,inlet
+    global y,inlet,channel
     while True:
         #time.sleep(0) #yield 
         sample, timestamp = inlet.pull_sample()
