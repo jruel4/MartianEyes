@@ -23,7 +23,7 @@ try:
     if __name__ == '__main__':
         qt_app = QApplication(sys.argv)
 except Exception as e: # could fail for reasons other than already exists... 
-    print("Receieved exception: ", e)
+    print "Receieved exception: ", e
 
 # Number of cols and rows in the table.
 nrows = 8
@@ -138,8 +138,7 @@ void main() {
 }
 """
 
-run1 = True
-spiffy = None
+
 class Canvas(app.Canvas):
     def __init__(self):
         app.Canvas.__init__(self, title='Use your wheel to zoom!',
@@ -174,7 +173,7 @@ class Canvas(app.Canvas):
         self.update()
         
     def on_key_press(self, event):
-        if event.key in ['Left', 'Right', 'Up', 'Down']:0
+        if event.key in ['Left', 'Right', 'Up', 'Down']:
             if event.key == 'Right':
                 dx = 0
             elif event.key == 'Up':
@@ -200,11 +199,7 @@ class Canvas(app.Canvas):
         yn = np.zeros_like(y)
         for i in range(8):
             yn[i,:] = scale_p1_m1(y[i,:])
-        
-        global run1, spiffy
-        if run1:
-            spiffy = yn
-            run1 = False
+    
         self.program['a_position'].set_data(yn.ravel().astype(np.float32))
         self.update()
         

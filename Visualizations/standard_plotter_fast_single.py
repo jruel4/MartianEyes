@@ -14,7 +14,7 @@ from threading import Thread
 
 streams = list()
 def select_stream():
-    streams = resolve_stream('type', 'EEG')
+    streams = resolve_stream()
     for i,s in enumerate(streams):
         print(i,s.name())
     stream_id = input("Input desired stream id: ")

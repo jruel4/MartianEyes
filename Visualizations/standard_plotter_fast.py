@@ -43,7 +43,7 @@ lines = []
 
 
 for i in range(8):
-    lines += [fig[0, 0].plot(y[i,:], color=colors[i])]
+    lines += [fig[0, 0].plot(y[i,:], color=colors[i],marker_size=0)]
     
 
 grid = vp.visuals.GridLines(color=(0, 0, 0, 0.5))
@@ -52,7 +52,7 @@ fig[0, 0].view.add(grid)
 
 idx = 0
 begin = time.time()
-def update_plot(event):
+def update_plot(event,normalize=False,split=False):
     global lines,y,fig,colors,idx,begin
     if idx==0: begin = time.time()
     idx+=1
@@ -61,16 +61,22 @@ def update_plot(event):
         pass
    
     try:
-
-        #normalize 
+        
         ymax = y.max()
-        if ymax > 0:
+        if normalize and (ymax > 0):
+            #normalize
             yn = y/(ymax*1.2)
         else:
             yn = y.copy()
-        
+
         for i,line in enumerate(lines):
-            line.set_data(yn[i,:]+i, color=colors[i])
+            #if normalizing add +1 to each line to seperate
+            if normalize:
+                line.set_data(yn[i,:]+i, color=colors[i],marker_size=0)
+            elif split:
+                line.set_data(yn[i,:] + i*ymax*2, color=colors[i],marker_size=0)
+            else:
+                line.set_data(yn[i,:], color=colors[i],marker_size=0)
 
         fig.update()
 
@@ -80,9 +86,10 @@ def update_plot(event):
             pass
 
 channel=0
+run_thread=True
 def update_data():
-    global y,inlet,channel
-    while True:
+    global y,inlet,run_thread
+    while run_thread:
         #time.sleep(0) #yield 
         sample, timestamp = inlet.pull_sample()
         #print(sample[0])
@@ -91,7 +98,11 @@ def update_data():
         y[:, :-k] = y[:, k:]
         y[:, -k:] = new_samples[:,None]     
     
-    
+def kill_vp():
+    global run_thread
+    run_thread=False
+    timer.stop()
+    fig.close()
 
 timer = app.Timer()
 timer.connect(update_plot)
@@ -99,9 +110,9 @@ timer.start(1.0/200)
 
 if __name__ == '__main__':
     fig.show(run=True)
-    
     thread = Thread(target=update_data)
-    thread.start()
+    thread.start()   
+
 
 # TODo consider self._timer = app.Timer(1.0/250.0, connect=self.on_timer, start=True)
 # overriding internal as in scalable plotter for fater plotting...    
