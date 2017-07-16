@@ -178,12 +178,13 @@ y = amplitudes * np.random.randn(G_NumChannels, G_MaximumBufferSize).astype(np.f
 e = None
 a = None
 run1=True
+mousey = None
 ranan= np.c_[
                 np.linspace(-1.0, +1.0, G_TotalShaders),
                 np.tile(np.linspace(0.0, +1.0, G_MaximumBufferSize),G_NumChannels)].astype(np.float32)
 class Canvas(app.Canvas):
     def __init__(self):
-        app.Canvas.__init__(self, size=G_Pix_CanvasSize, title='Glyphs', keys=None)
+        app.Canvas.__init__(self, size=G_Pix_CanvasSize, title='Glyphs', keys='interactive')
 
         # Initialize starting parameters
         self.x_axis_len = 250. # in samples
@@ -219,6 +220,8 @@ class Canvas(app.Canvas):
         self.d.draw('line_strip')
 
     def on_mouse_wheel(self, event):
+        global mousey
+        mousey = event
         dx = np.sign(event.delta[1]) * 50.
         self.x_axis_len = max([self.x_axis_len + dx, 50.])
         self.d['u_x_shift'] = G_MaximumBufferSize / self.x_axis_len
@@ -230,8 +233,8 @@ class Canvas(app.Canvas):
         else:
             self.printing = False
             
-'''    def on_key_press(self, event):
-        if event.key in ['Left', 'Right', 'Up', 'Down']:0
+    def on_key_press(self, event):
+        if event.key in ['Left', 'Right', 'Up', 'Down']:
             if event.key == 'Right':
                 dx = 0
             elif event.key == 'Up':
@@ -240,11 +243,11 @@ class Canvas(app.Canvas):
                 dx = -0.2
             else:
                 dx = 0
-            scale_x, scale_y = self.program['u_scale']
-            scale_x_new, scale_y_new = (scale_x, scale_y * math.exp(1.0*dx))
-            self.program['u_scale'] = (max(1, scale_x_new), max(1, scale_y_new))
+#            scale_x, scale_y = self.program['u_scale']
+#            scale_x_new, scale_y_new = (scale_x, scale_y * math.exp(1.0*dx))
+#            self.program['u_scale'] = (max(1, scale_x_new), max(1, scale_y_new))
             self.update()
-'''
+
     def on_resize(self, event):
         # Set canvas viewport and reconfigure visual transforms to match.
         vp = (0, 0, self.physical_size[0], self.physical_size[1])
@@ -284,6 +287,6 @@ class Canvas(app.Canvas):
 
 if __name__ == "__main__":
     c = Canvas()
-    c.measure_fps()
+#    c.measure_fps()
     c.show()
     app.run()
