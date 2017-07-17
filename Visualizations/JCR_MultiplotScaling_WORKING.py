@@ -14,7 +14,7 @@ from pylsl import StreamInlet, resolve_stream
 
 streams = list()
 def select_stream():
-    streams = resolve_stream('type', 'EEG')
+    streams = resolve_stream()
     for i,s in enumerate(streams):
         print(i,s.name())
     stream_id = input("Input desired stream id: ")
@@ -23,8 +23,8 @@ def select_stream():
 
 inlet = select_stream()
 
-NCHAN=16
-rows = 8
+NCHAN = 4
+rows = 2
 cols = 2
 
 
@@ -41,7 +41,7 @@ color = np.ones((N, 4), dtype=np.float32)
 color[:, 0] = np.linspace(0, 1, N)
 color[:, 1] = color[::-1, 0]
 
-canvas = scene.SceneCanvas(keys=None, show=True)
+canvas = scene.SceneCanvas(keys=None, show=False)
 grid = canvas.central_widget.add_grid(spacing=50)
 
 lines = list()
@@ -67,13 +67,13 @@ for r in range(rows):
         viewboxes[c + r*cols].camera.set_range()
 
 
-conv2uv = True
-
+conv2uv = False
+groov = None
 def scale_to_volts(raw, gain = 24, vref = 4.5):
      return  raw * ( (vref / (2**23 - 1)) / gain)
 
 def update(ev):
-    global pos, color, lines,inlet,conv2uv
+    global pos, color, lines,inlet,conv2uv,groov
     
     (samples, timestamps) = inlet.pull_chunk(max_samples=250)
 
@@ -83,10 +83,13 @@ def update(ev):
         return
     
     new_samples = np.transpose(samples)
+#    print new_samples.shape
+    new_samples = new_samples[:min([NCHAN,len(new_samples)]), :]
     pos[:,:-k, 1] = pos[:,k:,1]
     pos[:,-k:, 1] = new_samples
 
     sc_pos = pos.copy()
+    groov = sc_pos.copy()
     if conv2uv:        
         sc_pos[:,:,1] = scale_to_volts(sc_pos[:,:,1]) * 1000000.0
 
@@ -100,9 +103,13 @@ def update(ev):
     for i in range(len(lines)):
         lines[i].set_data(pos=sc_pos[i,:,:], color=color)
 
-timer = app.Timer(iterations=1000)
+timer = app.Timer(iterations=-1)
 timer.connect(update)
 timer.start(0)
+
+import time
+time.sleep(0.5)
+canvas.show()
 
 if __name__ == '__main__' and sys.flags.interactive == 0:
     app.run()

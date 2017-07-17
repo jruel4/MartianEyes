@@ -13,7 +13,7 @@ from pylsl import StreamInlet, resolve_stream
 
 streams = list()
 def select_stream():
-    streams = resolve_stream('type', 'EEG')
+    streams = resolve_stream()
     for i,s in enumerate(streams):
         print(i,s.name())
     stream_id = input("Input desired stream id: ")
@@ -83,12 +83,16 @@ cmax = 1
 chan_sel = 0
 freq_sel = (0,128)
 
+sam = None
 def update_plot(event):
-    global inlet, new_data, spec, sample, cmin, cmax, chan_sel
+    global inlet, new_data, spec, sample, cmin, cmax, chan_sel, sam
 
     sample, timestamp = inlet.pull_sample()
     sample = np.asarray(sample)
-    sample = sample.reshape((129,8))
+    sample = sample.reshape((8,63,8))
+    sam = sample
+    sample = sample[0,:,:]
+    sample = np.concatenate([sample, np.zeros([66,8])], 0)
     for idx in range(1):
         ch_samples = sample[:,chan_sel]
         k = 1
@@ -96,7 +100,7 @@ def update_plot(event):
         new_datas[idx][:, -k:] = ch_samples[:,None]
         
         #frequency 'zoom'
-        for f in range(129):
+        for f in range(63):
             if f >= freq_sel[0] and f <= freq_sel[1]:
                 pass
             else:

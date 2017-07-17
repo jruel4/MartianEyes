@@ -17,15 +17,28 @@ import time
 
 # TODO
 # 1. Make this a class, kill ALL global variables
-# 2. Make all graph dimensions relative
+# 2. DONE!: Make all graph dimensions relative
 
-G_TIME_IT = 0
-def time_it(start0_stop1):
-    global G_TIME_IT
-    if start0_stop1 > 0.5:
-        G_TIME_IT = time.time()
-    elif start0_stop1 < 0.5:
-        print "Time taken: ", time.time() - G_TIME_IT
+
+# Get LSL stream
+streams = list()
+def select_stream():
+    streams = resolve_stream()
+    for i,s in enumerate(streams):
+        print(i,s.name())
+    stream_id = input("Input desired stream id: ")
+    inlet = StreamInlet(streams[int(stream_id)])    
+    return inlet
+    
+inlet = select_stream()
+
+G_NumChannels = 8
+G_GraphCols = 4
+G_GraphRows = 3
+G_MaximumBufferSize = 300 # in samples, NOT seconds
+
+G_ChannelsToUse = range(G_NumChannels)
+
 
 def generate_idx(rows, cols, buf_size):
     return np.asarray([[c,r,idx] for r in range(rows) for c in range(cols) for idx in np.linspace(0,1.0,buf_size)])
@@ -37,11 +50,6 @@ G_Pix_CanvasWidth = 1600.
 G_Pix_CanvasHeight = 800.
 G_Pix_GraphEdgeMargins = (50.,50.) # space from sides of graph to edge of canvas (w x h)
 G_Pix_GraphMargins = (50.,50.) # space between one graph and another graph (w x h)
-
-G_NumChannels = 8
-G_GraphCols = 4
-G_GraphRows = 2
-G_MaximumBufferSize = 300 # in samples, NOT seconds
 
 # Calculated values
 G_Pix_CanvasSize = (G_Pix_CanvasWidth, G_Pix_CanvasHeight)
@@ -154,20 +162,6 @@ void main() {
         discard;
 }
 """
-
-
-
-
-streams = list()
-def select_stream():
-    streams = resolve_stream('type', 'EEG')
-    for i,s in enumerate(streams):
-        print(i,s.name())
-    stream_id = input("Input desired stream id: ")
-    inlet = StreamInlet(streams[int(stream_id)])    
-    return inlet
-    
-inlet = select_stream()
     
 # Various signal amplitudes.
 amplitudes = .1 + .2 * np.random.rand(G_NumChannels, 1).astype(np.float32)
