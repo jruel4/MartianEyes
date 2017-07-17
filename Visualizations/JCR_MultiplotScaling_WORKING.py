@@ -23,22 +23,22 @@ def select_stream():
 
 inlet = select_stream()
 
-NCHAN = 4
+G_NChanPlot = 2
 rows = 2
-cols = 2
+cols = 1
 
 
 # vertex positions of data to draw
-N = 10000
-pos = np.zeros((NCHAN, N, 2), dtype=np.float32)
-x_lim = [50., 750.]
+G_LenSigPlot = 10000
+pos = np.zeros((G_NChanPlot, G_LenSigPlot, 2), dtype=np.float32)
+x_lim = [-1*G_LenSigPlot, 0.]
 y_lim = [-2., 2.]
-pos[:,:, 0] = np.linspace(x_lim[0], x_lim[1], N)
-pos[:,:, 1] = np.random.normal(size=N)
+pos[:,:, 0] = np.linspace(x_lim[0], x_lim[1], G_LenSigPlot)
+pos[:,:, 1] = np.random.normal(size=G_LenSigPlot)
 
 # color array
-color = np.ones((N, 4), dtype=np.float32)
-color[:, 0] = np.linspace(0, 1, N)
+color = np.ones((G_LenSigPlot, 4), dtype=np.float32)
+color[:, 0] = np.linspace(0, 1, G_LenSigPlot)
 color[:, 1] = color[::-1, 0]
 
 canvas = scene.SceneCanvas(keys=None, show=False)
@@ -67,7 +67,7 @@ for r in range(rows):
         viewboxes[c + r*cols].camera.set_range()
 
 
-conv2uv = False
+conv2uv = True
 groov = None
 def scale_to_volts(raw, gain = 24, vref = 4.5):
      return  raw * ( (vref / (2**23 - 1)) / gain)
@@ -84,7 +84,7 @@ def update(ev):
     
     new_samples = np.transpose(samples)
 #    print new_samples.shape
-    new_samples = new_samples[:min([NCHAN,len(new_samples)]), :]
+    new_samples = new_samples[:min([G_NChanPlot,len(new_samples)]), :]
     pos[:,:-k, 1] = pos[:,k:,1]
     pos[:,-k:, 1] = new_samples
 
@@ -103,7 +103,7 @@ def update(ev):
     for i in range(len(lines)):
         lines[i].set_data(pos=sc_pos[i,:,:], color=color)
 
-timer = app.Timer(iterations=-1)
+timer = app.Timer(iterations=5000)
 timer.connect(update)
 timer.start(0)
 

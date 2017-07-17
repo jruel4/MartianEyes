@@ -98,6 +98,42 @@ def get_stream_fps():
                 print("fps: ",idx/(time.time()-begin))
     except KeyboardInterrupt:
         pass
+
+
+def get_all_streams_fps():
+    try:
+        while True:
+            streams = resolve_stream()
+            print "Available streams\n"
+            for i,s in enumerate(streams):
+                print(i,s.name())
+            inlets = [StreamInlet(streams[int(stream_id)]) for stream_id in range(len(streams))]
+            begin = time.time()
+            idx = 0
+            last_print_update = time.time()
+            last_rcvd = np.full([len(streams)], begin)
+            num_rcvd = np.zeros([len(streams)])
+            fps_list = np.zeros([len(streams)])
+            print "\n",
+            while True:
+                idx += 1
+                for i in range(len(inlets)):
+                    sample, _ts = inlets[i].pull_chunk()
+                    if len(sample) == 0:
+                        continue
+                    else:
+                        last_rcvd[i] = time.time()
+                        num_rcvd[i] += len(sample)
+                if time.time() - last_print_update > 2.0:
+                    output_string = ""
+                    for i in range(len(inlets)):
+                        output_string += str(i) + ") fps: " + str(num_rcvd[i]/(time.time()-begin)) + "\t"
+                    print "\r" + output_string,
+                    last_print_update = time.time()
+                if time.time() - begin > 60.0:
+                    break
+    except KeyboardInterrupt:
+        pass
     
 def create_fake_eeg(sps=250, nchan=8,name=""):
     '''
@@ -119,6 +155,47 @@ def create_fake_eeg(sps=250, nchan=8,name=""):
             white_noise = 0.7*np.random.rand()
             new_vals = [white_noise + line_noise + 1.2*np.sin(2*np.pi*freq*(idx*delay)) for freq in freqs]
 
+            outlet.push_sample(new_vals)
+    _thread = Thread(target=_target)
+    _thread.start()
+    return _thread
+
+def create_white_noise(sps=250, nchan=8,name=""):
+    '''
+    create fake eeg strea - for testing spectrographic 'zoom' feature
+    requires some high amplitude noise as well as broad band noise for realism
+    '''
+    stream_name = name + "_WhiteNoise_"
+    stream_id = stream_name + time.strftime("_%d_%m_%Y_%H_%M_%S_")
+    info = StreamInfo(stream_name, 'WN', nchan, 250, 'float32', stream_id)
+    outlet = StreamOutlet(info)
+    delay = 1.0/sps
+    def _target():
+        idx = 0
+        while True:
+            time.sleep(delay)
+            outlet.push_sample(np.random.rand(nchan))
+    _thread = Thread(target=_target)
+    _thread.start()
+    return _thread
+
+def create_freqs(sps=250, nchan=8,name="",freqs=[10,30]):
+    '''
+    create fake eeg strea - for testing spectrographic 'zoom' feature
+    requires some high amplitude noise as well as broad band noise for realism
+    '''
+    stream_name = name + "_Freqs1030_"
+    stream_id = stream_name + time.strftime("_%d_%m_%Y_%H_%M_%S_")
+    info = StreamInfo(stream_name, 'FREQS', nchan, 250, 'float32', stream_id)
+    outlet = StreamOutlet(info)
+    delay = 1.0/sps
+
+    def _target():
+        idx = 0
+        while True:
+            time.sleep(delay)
+            idx += 1
+            new_vals = [ np.sin(2*np.pi*30*(idx*delay)) + np.sin(2*np.pi*10*(idx*delay)) for _ in range(nchan)]
             outlet.push_sample(new_vals)
     _thread = Thread(target=_target)
     _thread.start()
@@ -146,8 +223,6 @@ def create_fake_spectro(name="",sps=10.,freqs=250, peaks=[14,15,18,60]):
             idx += 1
             tmp_sig = main_sin + 0.7*np.random.rand(freqs*2)
             fft = np.abs(np.fft.fft(tmp_sig))[:(freqs)]
-            if idx % 100:
-                print "FFT: ", fft.shape
             outlet.push_sample(fft)
     _thread = Thread(target=_target)
     _thread.start()

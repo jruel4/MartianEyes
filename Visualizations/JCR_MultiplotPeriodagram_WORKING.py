@@ -23,49 +23,57 @@ def select_stream():
 
 inlet = select_stream()
 
+
+
 # Parameters
+G_FS = 250 # rate at which the data was sampled (originally)
 G_RemoveDC = True #remove the first element of the periodogram - this is the DC component
 G_RemoveMirror = True #remove the second half of the spectrogram (mirror)
-G_MovingAverageLen = 250
+G_MovingAverageLen = 1
+
 G_Freqs = [0.5,125]
 
 # This is the number of channels we are receiving
-nchan_in = 8
+G_NChanIn = 8
 
 # This is the number of channels to display
-NCHAN = 3
-rows = 3
+G_NChanPlot = 2
+rows = 2
 cols = 1
 
 # dynamically get length
 sample_tst, _ts = inlet.pull_sample()
 G_LengthOfInput = len(sample_tst)
 
+
+# Calculate the frequencies
+#G_Freqs = np.linspace(0, G_FS, G_LengthOfInput)
+
 # Moving average length must be greater than 1
 assert G_MovingAverageLen >= 1
 
 # Length of input should be evenly divisible by number of channels we expect
-if G_LengthOfInput % nchan_in:
-    raise RuntimeError("Number of expected channels and length of input do not match, nchan_in: ", nchan_in, " len(input): ", G_LengthOfInput)
+if G_LengthOfInput % G_NChanIn:
+    raise RuntimeError("Number of expected channels and length of input do not match, G_NChanIn: ", G_NChanIn, " len(input): ", G_LengthOfInput)
 
 # Alert user if DC / mirror may have already been removed
-if (G_LengthOfInput/nchan_in) % 2:
-    print "Length of periodogram is odd, len: ", G_LengthOfInput/nchan_in, ", may not need to remove mirror or DC component"
+if (G_LengthOfInput/G_NChanIn) % 2:
+    print "Length of periodogram is odd, len: ", G_LengthOfInput/G_NChanIn, ", may not need to remove mirror or DC component"
 
 # vertex positions of data to draw
-N_in = G_LengthOfInput/nchan_in
+G_LenSigIn = G_LengthOfInput/G_NChanIn
 
-N = N_in
+G_LenSigPlot = G_LenSigIn
 if G_RemoveMirror:
-    N=N/2
+    G_LenSigPlot=G_LenSigPlot/2
 if G_RemoveDC:
-    N=N-1
+    G_LenSigPlot=G_LenSigPlot-1
 
-pos = np.zeros((NCHAN, N, 2), dtype=np.float32)
+pos = np.zeros((G_NChanPlot, G_LenSigPlot, 2), dtype=np.float32)
 x_lim = [G_Freqs[0], G_Freqs[1]]
 y_lim = [-2., 2.]
-pos[:,:, 0] = np.linspace(x_lim[0], x_lim[1], N)
-pos[:,:, 1] = np.random.normal(size=N)
+pos[:,:, 0] = np.linspace(x_lim[0], x_lim[1], G_LenSigPlot)
+pos[:,:, 1] = np.random.normal(size=G_LenSigPlot)
 
 # Here for reference (below)
 #  color.get_color_names()
@@ -87,10 +95,9 @@ color_map = [
 
 # Translate colormap to actual rbga values
 color = list()
-for freq in np.linspace(G_Freqs[0], G_Freqs[1], N):
+for freq in np.linspace(G_Freqs[0], G_Freqs[1], G_LenSigPlot):
     for freq_range in color_map:
         if (freq > freq_range[0]) and (freq <= freq_range[1]):
-            print freq
             color.append(colour.Color(freq_range[2]).rgba)
 
 canvas = scene.SceneCanvas(keys=None, show=False)
@@ -102,7 +109,7 @@ for r in range(rows):
     for c in range(cols):
         viewboxes.append(grid.add_view(row=r*2, col=c, camera='panzoom'))
         
-        if r*cols + c < NCHAN:
+        if r*cols + c < G_NChanPlot:
             # add some axes
             x_axis = scene.AxisWidget(orientation='bottom', domain=G_Freqs, axis_label="Hz")
             x_axis.stretch = (1, 0.1)
@@ -120,7 +127,12 @@ for r in range(rows):
 
 once = True
 buflen = 250
-G_MABuffer = np.zeros([buflen,nchan_in,N_in])
+conv2uv = False
+
+def scale_to_volts(raw, gain = 24, vref = 4.5):
+     return  raw * ( (vref / (2**23 - 1)) / gain)
+
+G_MABuffer = np.zeros([buflen,G_NChanIn,G_LenSigIn])
 
 def update(ev):
     global pos, color, lines,inlet,conv2uv,once,viewboxes,G_MABuffer
@@ -138,7 +150,7 @@ def update(ev):
     if G_MovingAverageLen > 1:
         # Shift the moving average buffer
         G_MABuffer[:-k,:,:] = G_MABuffer[k:,:,:]
-        G_MABuffer[-k:,:,:] = np.reshape(samples,[-1,nchan_in, N_in])
+        G_MABuffer[-k:,:,:] = np.reshape(samples,[-1,G_NChanIn, G_LenSigIn])
         
         if once: print "(MA)New samples, shape: ", np.shape(G_MABuffer[-G_MovingAverageLen:, :, :] / float(len(G_MABuffer)))
         new_samples = np.sum(G_MABuffer[-G_MovingAverageLen:, :, :],0) / float(len(G_MABuffer))
@@ -149,25 +161,30 @@ def update(ev):
         if once: print "New samples, discarded all but current sample: ", new_samples.shape
     
         # Reshape to match 
-        new_samples = np.reshape(new_samples,[nchan_in,N_in])
+        new_samples = np.reshape(new_samples,[G_NChanIn,G_LenSigIn])
         if once: print "New samples, reshaped: ", new_samples.shape
-        if once: print "New samples, unused channels cleaved: ", new_samples[range(NCHAN),:].shape
+        if once: print "New samples, unused channels cleaved: ", new_samples[range(G_NChanPlot),:].shape
     
     # Remove mirror and remove DC
     if G_RemoveMirror:
-        if once: print "New samples, mirror cleaved: ", new_samples[:,:N_in/2].shape        
-        new_samples = new_samples[:,:N_in/2]
+        if once: print "New samples, mirror cleaved: ", new_samples[:,:G_LenSigIn/2].shape        
+        new_samples = new_samples[:,:G_LenSigIn/2]
     if G_RemoveDC:
         if once: print "New samples, DC cleaved: ", new_samples[:,1:].shape
         new_samples = new_samples[:,1:]
         
 
     if once: print "Pos[:,:,1], : ", pos[:,:,1].shape
-    pos[:,:,1] = new_samples[range(NCHAN),:]
+    pos[:,:,1] = new_samples[range(G_NChanPlot),:]
+
+
+    sc_pos = pos.copy()
+    if conv2uv:        
+        sc_pos[:,:,1] = scale_to_volts(sc_pos[:,:,1]) * 1000000.0
 
 #    color = np.roll(color, 1, axis=0)
     for i in range(len(lines)):
-        lines[i].set_data(pos=pos[i,:,:], color=color)
+        lines[i].set_data(pos=sc_pos[i,:,:], color=color)
 
 
     if once:
@@ -177,15 +194,11 @@ def update(ev):
     # Stop printing
     once = False
 
-timer = app.Timer(iterations=25000)
-timer.connect(update)
-timer.start(0)
-
-canvas.show()
-#import time
-#time.sleep(1)
-
-
-
 if __name__ == '__main__' and sys.flags.interactive == 0:
     app.run()
+    
+    timer = app.Timer(iterations=50000)
+    timer.connect(update)
+    timer.start(0)
+    
+    canvas.show()
