@@ -79,9 +79,9 @@ def create_noisy_test_source(freq=10, noise_freq=60, sps=250):
     _thread.start()
             
 def select_stream():
-    streams = resolve_stream('type', 'EEG')
+    streams = resolve_stream()
     for i,s in enumerate(streams):
-        print(i,s.name())
+        print(i,s.name(), s.uid())
     stream_id = input("Input desired stream id: ")
     inlet = StreamInlet(streams[int(stream_id)])    
     return inlet
@@ -229,13 +229,13 @@ def create_fake_spectro(name="",sps=10.,freqs=250, peaks=[14,15,18,60]):
     return _thread
 
 
-def create_fake_eeg_increasing_beta(sps=250, nchan=8):
+def create_fake_eeg_increasing_beta(sps=250, nchan=8,name=""):
     '''
     create fake eeg strea - for testing spectrographic 'zoom' feature
     requires some high amplitude noise as well as broad band noise for realism
     '''
     freqs = list(range(10,10+nchan))
-    stream_name = "Fake_EEG_BetaCycle_"
+    stream_name = name + "Fake_EEG_BetaCycle_"
     stream_id = stream_name + time.strftime("_%d_%m_%Y_%H_%M_%S_")
     info = StreamInfo(stream_name, 'EEG', nchan, 250, 'float32', stream_id)
     outlet = StreamOutlet(info)
@@ -254,6 +254,59 @@ def create_fake_eeg_increasing_beta(sps=250, nchan=8):
     _thread = Thread(target=_target)
     _thread.start()
     return _thread
+
+def create_ma_test(name="",sps=250, nchan=8):
+    '''
+    '''
+    stream_name = name + "_MA_Test_"
+    stream_id = stream_name + time.strftime("_%d_%m_%Y_%H_%M_%S_")
+    info = StreamInfo(stream_name, 'TST', nchan, 250, 'float32', stream_id)
+    outlet = StreamOutlet(info)
+    delay = 1.0/sps
+    output = [50]*250 + [100]*1 + [50]*500 + (np.random.rand(100)*100).tolist() + [-50]*1 + [50]*1000
+    output_total_len = len(output)
+    def _target():
+        idx = 0
+        while True:
+            time.sleep(delay)
+            idx += 1
+            outlet.push_sample([output[idx%output_total_len]]*8)
+    _thread = Thread(target=_target)
+    _thread.start()
+    return _thread
+
+
+def create_fake_eeg_increasing_beta_random_bad_spikes(name="",sps=250, nchan=8):
+    '''
+    create fake eeg strea - for testing spectrographic 'zoom' feature
+    requires some high amplitude noise as well as broad band noise for realism
+    '''
+    freqs = list(range(10,10+nchan))
+    stream_name = name + "Fake_EEG_BetaCycle_"
+    stream_id = stream_name + time.strftime("_%d_%m_%Y_%H_%M_%S_")
+    info = StreamInfo(stream_name, 'EEG', nchan, 250, 'float32', stream_id)
+    outlet = StreamOutlet(info)
+    delay = 1.0/sps
+    def _target():
+        global new_vals
+        idx = 0
+        while True:
+            time.sleep(delay)
+            idx += 1
+            # Volt conversion factor is 4.5/(2**23)/24, ~2.2e-8, roughly 45 points per uV
+            line_noise = 250.0*np.sin(2*np.pi*60*(idx*delay)) # ~22uV
+#            white_noise = 200.0*np.random.rand() # ~4.5uV
+            beta = 500.0 * np.sin(2*np.pi*22*(idx*delay)) #~88uV
+#            beta = ((idx % sps*10.) / sps*2.5) * 500.0 *np.sin(2*np.pi*22*(idx*delay)) # 0uV - ~88uV, cycle every 10 seconds between 0 and 4
+#            new_vals = [white_noise + line_noise + 500.0 * np.sin(2*np.pi*freq*(idx*delay)) + beta for freq in freqs] # 10uV (valuies in freqs)
+            new_vals = [line_noise + 125.0 * np.sin(2*np.pi*freq*(idx*delay)) + beta for freq in freqs] # ~11uV (values in freqs)
+            if (idx%1250 < 25):
+                new_vals[0] *= 100.0 #should result in signal with amplitude of (at minimum) 220uV
+            outlet.push_sample(new_vals)
+    _thread = Thread(target=_target)
+    _thread.start()
+    return _thread
+
 
 
 def create_fake_audio(sps=250):

@@ -11,6 +11,7 @@ Created on Sat Jul 15 23:46:01 2017
 import sys
 import numpy as np
 import time
+from scipy import signal
 from vispy import app, scene
 
 
@@ -20,28 +21,31 @@ streams = list()
 def select_stream():
     streams = resolve_stream()
     for i,s in enumerate(streams):
-        print i,s.name(), s.uid()
+        print i, s.name(), s.uid()
     stream_id = input("Input desired stream id: ")
     inlet = StreamInlet(streams[int(stream_id)])    
     return inlet
 
 inlet = select_stream()
 
-G_NChanPlot = 8
-G_NChanPlot_IDX = range(G_NChanPlot)
+G_NChanPlot = 4
+G_NChanPlot_IDX = np.arange(2,18,4)
 
 G_FS = 250
 
 rows = 2
 cols = 2
 
-G_MovingAverageLen = 1
+G_MovingAverageLen = 1000
 G_RemoveDC = False
 
+buflen = 10000
+G_MABuffer = np.zeros([G_NChanPlot,buflen])
+
 # vertex positions of data to draw
-G_LenSigPlot = 10000
+G_LenSigPlot = 10000 - G_MovingAverageLen + 1
 pos = np.zeros((G_NChanPlot, G_LenSigPlot, 2), dtype=np.float32)
-x_lim = [-1. * G_LenSigPlot / G_FS, 0.]
+x_lim = [-1*G_LenSigPlot / G_FS, 0.]
 pos[:,:, 0] = np.linspace(x_lim[0], x_lim[1], G_LenSigPlot)
 
 # color array
@@ -64,7 +68,8 @@ for r in range(rows):
         x_axis.stretch = (1, 0.1)
         grid.add_widget(x_axis, row=1+r*2, col=c,col_span=1, row_span=1)
         x_axis.link_view(viewboxes[c + r*cols])
-        y_axis = scene.AxisWidget(orientation='left')
+
+        y_axis = scene.AxisWidget(orientation='right')
         y_axis.stretch = (0.1, 1)
         grid.add_widget(y_axis, row=0+r*2, col=c)
         y_axis.link_view(viewboxes[c + r*cols])
@@ -88,28 +93,44 @@ last_upd = 0
 
 
 # Moving average length must be greater than 1
-#assert G_MovingAverageLen >= 1
-
-#buflen = 5000
-#G_MABuffer = np.zeros([buflen,G_NChanIn,G_LenSigIn])
-
+assert G_MovingAverageLen >= 1
 
 def update(ev):
     global pos, color, lines,inlet,conv2uv,groov,idx,last_upd,once
     idx +=1
-    (samples, timestamps) = inlet.pull_chunk(max_samples=250)
+    # Samples is (samples, nchan)
+    (samples, timestamps) = inlet.pull_chunk(max_samples=buflen-1)
 
     # Check if we actually received any samples - pull_chunk doesn't block
     k = len(samples)
     if k == 0:
         return
-    
+
     # new_samples shape: (nchan, nsamples)
-    new_samples = np.transpose(samples)
+    samples_tmp = np.transpose(samples)    
+
+    # Shift the moving average buffer
+    G_MABuffer[:,:-k] = G_MABuffer[:,k:]
+    # Update the newest values
+    G_MABuffer[:,-k:] = samples_tmp[G_NChanPlot_IDX,:]
     
-    new_samples = new_samples[:min([G_NChanPlot,len(new_samples)]), :]
-    pos[:,:-k, 1] = pos[:,k:,1]
-    pos[:,-k:, 1] = new_samples
+    # Convolve kernel for smoothing
+    ma_kernel = np.ones((1,G_MovingAverageLen))
+    G_MABufferPositiveMask = (G_MABuffer >= 0) * 1
+    G_MABufferPositiveOnly = G_MABuffer * G_MABufferPositiveMask
+    G_MABufferSmoothed = signal.convolve2d(G_MABufferPositiveOnly, ma_kernel,mode='valid',fillvalue=1)
+
+    n_samples_per_point = signal.convolve2d(G_MABufferPositiveMask, ma_kernel,mode='valid',fillvalue=1)
+    
+    zeros = (n_samples_per_point == 0)
+    zeros = zeros*1
+    n_samples_per_point += zeros
+    smoothed_signal = G_MABufferSmoothed / n_samples_per_point
+
+
+#    if once: print "(MA)New samples, shape: ", np.shape(G_MABuffer[-G_MovingAverageLen:, :, :] / float(G_MovingAverageLen))
+    groov = smoothed_signal
+    pos[:,:,1] = smoothed_signal
 
     sc_pos = pos.copy()
     groov = sc_pos.copy()
@@ -133,7 +154,7 @@ def update(ev):
             viewboxes[i].camera.set_range(y= (max([min(sc_pos[i,:,1]),0]), max(sc_pos[i,:,1]) ) )
         last_upd = time.time()
 
-timer = app.Timer(iterations=100000)
+timer = app.Timer(iterations=10000)
 timer.connect(update)
 timer.start(0)
 

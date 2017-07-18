@@ -7,9 +7,9 @@ Created on Sat Jul 15 23:46:01 2017
 
 import sys
 import numpy as np
+import time
+
 from vispy import app, scene
-
-
 from pylsl import StreamInlet, resolve_stream
 
 streams = list()
@@ -27,18 +27,18 @@ inlet = select_stream()
 
 # Parameters
 G_FS = 250 # rate at which the data was sampled (originally)
-G_RemoveDC = True #remove the first element of the periodogram - this is the DC component
-G_RemoveMirror = True #remove the second half of the spectrogram (mirror)
-G_MovingAverageLen = 1
+G_RemoveDC = False #remove the first element of the periodogram - this is the DC component
+G_RemoveMirror = False #remove the second half of the spectrogram (mirror)
+G_MovingAverageLen = 1000
 
-G_Freqs = [0.5,125]
+
 
 # This is the number of channels we are receiving
 G_NChanIn = 8
 
 # This is the number of channels to display
-G_NChanPlot = 2
-rows = 2
+G_NChanPlot = 7
+rows = 7
 cols = 1
 
 # dynamically get length
@@ -69,11 +69,17 @@ if G_RemoveMirror:
 if G_RemoveDC:
     G_LenSigPlot=G_LenSigPlot-1
 
+
+
+#G_Freqs = np.linspace(0,125,G_LenSigPlot+1)
+#G_Freqs = G_Freqs[1:]
+G_Freqs = np.arange(8,30,1)
+G_Freqs = [10,15,20,25]
+assert len(G_Freqs) == G_LenSigPlot
+
+
 pos = np.zeros((G_NChanPlot, G_LenSigPlot, 2), dtype=np.float32)
-x_lim = [G_Freqs[0], G_Freqs[1]]
-y_lim = [-2., 2.]
-pos[:,:, 0] = np.linspace(x_lim[0], x_lim[1], G_LenSigPlot)
-pos[:,:, 1] = np.random.normal(size=G_LenSigPlot)
+pos[:,:, 0] = G_Freqs # x vals (freqs)
 
 # Here for reference (below)
 #  color.get_color_names()
@@ -90,19 +96,19 @@ color_map = [
 [20,24, 'turquoise'],
 [24,32, 'lightgreen'],
 [32,40, 'green'],
-[40,G_Freqs[1]+1, 'greenyellow']
+[40,G_Freqs[-1]+1, 'greenyellow']
 ]
 
 # Translate colormap to actual rbga values
 color = list()
-for freq in np.linspace(G_Freqs[0], G_Freqs[1], G_LenSigPlot):
+for freq in G_Freqs:
     for freq_range in color_map:
         if (freq > freq_range[0]) and (freq <= freq_range[1]):
             color.append(colour.Color(freq_range[2]).rgba)
 
-canvas = scene.SceneCanvas(keys=None, show=False)
-grid = canvas.central_widget.add_grid(spacing=0)
 
+canvas = scene.SceneCanvas(keys=None, show=False)
+grid = canvas.central_widget.add_grid(spacing=0,margin=10,padding=10)
 lines = list()
 viewboxes = list()
 for r in range(rows):
@@ -111,12 +117,12 @@ for r in range(rows):
         
         if r*cols + c < G_NChanPlot:
             # add some axes
-            x_axis = scene.AxisWidget(orientation='bottom', domain=G_Freqs, axis_label="Hz")
+            x_axis = scene.AxisWidget(orientation='bottom', axis_label="Hz")
             x_axis.stretch = (1, 0.1)
             xax = x_axis
             grid.add_widget(x_axis, row=1+r*2, col=c,col_span=1, row_span=1)
             x_axis.link_view(viewboxes[c + r*cols])
-            y_axis = scene.AxisWidget(orientation='right')
+            y_axis = scene.AxisWidget(orientation='left', axis_label="uV")
             y_axis.stretch = (0.1, 1)
             grid.add_widget(y_axis, row=0+r*2, col=c)
             y_axis.link_view(viewboxes[c + r*cols])
@@ -126,17 +132,16 @@ for r in range(rows):
 
 
 once = True
-buflen = 250
+buflen = 5000
 conv2uv = False
+conv2uvfromv = True
 
-def scale_to_volts(raw, gain = 24, vref = 4.5):
-     return  raw * ( (vref / (2**23 - 1)) / gain)
+i2v = ( (4.5 / (2**23 - 1)) / 24)
 
 G_MABuffer = np.zeros([buflen,G_NChanIn,G_LenSigIn])
-
+last_upd = 0
 def update(ev):
-    global pos, color, lines,inlet,conv2uv,once,viewboxes,G_MABuffer
-    
+    global pos, color, lines,inlet,conv2uv,once,viewboxes,G_MABuffer,last_upd,i2v
     # Samples is a #samples x nchan*nfreqs
     (samples, timestamps) = inlet.pull_chunk(max_samples=len(G_MABuffer)-1)
 
@@ -148,12 +153,26 @@ def update(ev):
     if once: print "Samples, ", np.shape(samples)
 
     if G_MovingAverageLen > 1:
-        # Shift the moving average buffer
-        G_MABuffer[:-k,:,:] = G_MABuffer[k:,:,:]
-        G_MABuffer[-k:,:,:] = np.reshape(samples,[-1,G_NChanIn, G_LenSigIn])
         
-        if once: print "(MA)New samples, shape: ", np.shape(G_MABuffer[-G_MovingAverageLen:, :, :] / float(len(G_MABuffer)))
-        new_samples = np.sum(G_MABuffer[-G_MovingAverageLen:, :, :],0) / float(len(G_MABuffer))
+        samples_tmp = np.reshape(samples,[-1,G_NChanIn, G_LenSigIn])
+        
+        for ch in range(G_NChanIn):
+            #generate T/F values for each sample based on whether or not it contains any negatives
+            do_keep = samples_tmp[:,ch,:].min(axis=1) >= 0 
+
+            #use above value to nix any samples that have negatives
+            samples_to_append = samples_tmp[do_keep,ch,:]
+            
+            #if all samples were negative then skip updating the MA
+            k = len(samples_to_append)
+            if k > 0:
+                # Shift the moving average buffer
+                G_MABuffer[:-k,ch,:] = G_MABuffer[k:,ch,:]
+                # Update the newest values
+                G_MABuffer[-k:,ch,:] = samples_to_append
+        
+        if once: print "(MA)New samples, shape: ", np.shape(G_MABuffer[-G_MovingAverageLen:, :, :] / float(G_MovingAverageLen))
+        new_samples = np.sum(G_MABuffer[-G_MovingAverageLen:, :, :],0) / float(G_MovingAverageLen)
 
     else:
         # Discard all but the most recent sample
@@ -179,17 +198,20 @@ def update(ev):
 
 
     sc_pos = pos.copy()
-    if conv2uv:        
-        sc_pos[:,:,1] = scale_to_volts(sc_pos[:,:,1]) * 1000000.0
+    if conv2uv:
+        sc_pos[:,:,1] *= i2v
+    if conv2uvfromv:
+        sc_pos[:,:,1] *= 1e6
 
-#    color = np.roll(color, 1, axis=0)
+    # Update lines with new data
     for i in range(len(lines)):
         lines[i].set_data(pos=sc_pos[i,:,:], color=color)
 
-
-    if once:
-        for i in viewboxes:
-            i.camera.set_range()
+    # Update x/y axis
+    if (time.time() - last_upd) > 1.0:
+        for i in range(len(viewboxes)):
+            viewboxes[i].camera.set_range(x=(G_Freqs[0], G_Freqs[-1]), y=(0, max(sc_pos[i,:,1]) ) )
+        last_upd = time.time()
     
     # Stop printing
     once = False
@@ -197,7 +219,7 @@ def update(ev):
 if __name__ == '__main__' and sys.flags.interactive == 0:
     app.run()
     
-    timer = app.Timer(iterations=50000)
+    timer = app.Timer(iterations=10000)
     timer.connect(update)
     timer.start(0)
     
