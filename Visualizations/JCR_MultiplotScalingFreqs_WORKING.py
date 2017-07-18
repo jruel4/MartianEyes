@@ -29,15 +29,17 @@ def select_stream():
 inlet = select_stream()
 
 G_NChanPlot = 4
-G_NChanPlot_IDX = np.arange(2,18,4)
+G_NChanPlot_IDX = range(4)
+#G_NChanPlot_IDX = np.arange(18,34,4)
 
 G_FS = 250
 
 rows = 2
 cols = 2
 
-G_MovingAverageLen = 1000
+G_MovingAverageLen = 1
 G_RemoveDC = False
+G_RemoveNegatives = False
 
 buflen = 10000
 G_MABuffer = np.zeros([G_NChanPlot,buflen])
@@ -82,7 +84,7 @@ for r in range(rows):
 
 
 conv2uv = False
-conv2uvfromv = True
+conv2uvfromv = False
 groov = None
 idx=0
 
@@ -96,7 +98,7 @@ last_upd = 0
 assert G_MovingAverageLen >= 1
 
 def update(ev):
-    global pos, color, lines,inlet,conv2uv,groov,idx,last_upd,once
+    global pos, color, lines,inlet,conv2uv,groov,idx,last_upd,once,G_MABuffer
     idx +=1
     # Samples is (samples, nchan)
     (samples, timestamps) = inlet.pull_chunk(max_samples=buflen-1)
@@ -116,11 +118,14 @@ def update(ev):
     
     # Convolve kernel for smoothing
     ma_kernel = np.ones((1,G_MovingAverageLen))
-    G_MABufferPositiveMask = (G_MABuffer >= 0) * 1
-    G_MABufferPositiveOnly = G_MABuffer * G_MABufferPositiveMask
-    G_MABufferSmoothed = signal.convolve2d(G_MABufferPositiveOnly, ma_kernel,mode='valid',fillvalue=1)
-
-    n_samples_per_point = signal.convolve2d(G_MABufferPositiveMask, ma_kernel,mode='valid',fillvalue=1)
+    if G_RemoveNegatives:
+        G_MABufferMask = (G_MABuffer >= 0) * 1
+    else:
+        G_MABufferMask = np.ones_like(G_MABuffer)
+        
+    G_MABuffer = G_MABuffer * G_MABufferMask
+    G_MABufferSmoothed = signal.convolve2d(G_MABuffer, ma_kernel,mode='valid',fillvalue=1)
+    n_samples_per_point = signal.convolve2d(G_MABufferMask, ma_kernel,mode='valid',fillvalue=1)
     
     zeros = (n_samples_per_point == 0)
     zeros = zeros*1
@@ -149,10 +154,15 @@ def update(ev):
     for i in range(len(lines)):
         lines[i].set_data(pos=sc_pos[i,:,:], color=color)
 
-    if (time.time() - last_upd) > 1.0:
-        for i in range(len(viewboxes)):
-            viewboxes[i].camera.set_range(y= (max([min(sc_pos[i,:,1]),0]), max(sc_pos[i,:,1]) ) )
-        last_upd = time.time()
+#==============================================================================
+#     if (time.time() - last_upd) > 1.0:
+#         for i in range(len(viewboxes)):
+#             if G_RemoveNegatives:
+#                 viewboxes[i].camera.set_range(y= (max([min(sc_pos[i,:,1]),0]), max(sc_pos[i,:,1]) ) )
+#             else:
+#                 viewboxes[i].camera.set_range(y= (min(sc_pos[i,:,1]), max(sc_pos[i,:,1]) ) )
+#         last_upd = time.time()
+#==============================================================================
 
 timer = app.Timer(iterations=10000)
 timer.connect(update)
