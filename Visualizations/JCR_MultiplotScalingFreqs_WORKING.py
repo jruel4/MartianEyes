@@ -40,6 +40,7 @@ cols = 2
 G_MovingAverageLen = 1
 G_RemoveDC = False
 G_RemoveNegatives = False
+G_RemoveNans = True
 
 buflen = 10000
 G_MABuffer = np.zeros([G_NChanPlot,buflen])
@@ -119,7 +120,10 @@ def update(ev):
     # Convolve kernel for smoothing
     ma_kernel = np.ones((1,G_MovingAverageLen))
     if G_RemoveNegatives:
-        G_MABufferMask = (G_MABuffer >= 0) * 1
+        G_MABufferMask = (G_MABuffer >= 0) * 1    
+    elif G_RemoveNans:
+        G_MABufferMask = (~np.isnan(G_MABuffer)) * 1
+        G_MABuffer = np.nan_to_num(G_MABuffer)
     else:
         G_MABufferMask = np.ones_like(G_MABuffer)
         
@@ -149,20 +153,18 @@ def update(ev):
             print sc_pos.shape
             once = False
 
-    color = np.roll(color, 10, axis=0)
+    color = np.roll(color, 25, axis=0)
 
     for i in range(len(lines)):
         lines[i].set_data(pos=sc_pos[i,:,:], color=color)
 
-#==============================================================================
-#     if (time.time() - last_upd) > 1.0:
-#         for i in range(len(viewboxes)):
-#             if G_RemoveNegatives:
-#                 viewboxes[i].camera.set_range(y= (max([min(sc_pos[i,:,1]),0]), max(sc_pos[i,:,1]) ) )
-#             else:
-#                 viewboxes[i].camera.set_range(y= (min(sc_pos[i,:,1]), max(sc_pos[i,:,1]) ) )
-#         last_upd = time.time()
-#==============================================================================
+    if (time.time() - last_upd) > 1.0:
+        for i in range(len(viewboxes)):
+            if G_RemoveNegatives:
+                viewboxes[i].camera.set_range(y= (max([min(sc_pos[i,:,1]),0]), max(sc_pos[i,:,1]) ) )
+            else:
+                viewboxes[i].camera.set_range(y= (min(sc_pos[i,:,1]), max(sc_pos[i,:,1]) ) )
+        last_upd = time.time()
 
 timer = app.Timer(iterations=10000)
 timer.connect(update)

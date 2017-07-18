@@ -73,8 +73,8 @@ if G_RemoveDC:
 
 #G_Freqs = np.linspace(0,125,G_LenSigPlot+1)
 #G_Freqs = G_Freqs[1:]
-G_Freqs = np.arange(8,30,1)
-G_Freqs = [10,15,20,25]
+G_Freqs = np.arange(8,14,1)
+#G_Freqs = [10,15,20,25]
 assert len(G_Freqs) == G_LenSigPlot
 
 
