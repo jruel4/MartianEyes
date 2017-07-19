@@ -201,13 +201,13 @@ def create_freqs(sps=250, nchan=8,name="",freqs=[10,30]):
     _thread.start()
     return _thread
 
-def create_fake_spectro(name="",sps=10.,freqs=250, peaks=[14,15,18,60]):
+def create_fake_spectro(name="",sps=10.,freqs=250, peaks=[14,15,18,60],nchan=8):
     '''
     create fake spectrogram lsl output (testing purposes)
     '''
     stream_name = name + "_Fake_EEG_Spect_"
     stream_id = stream_name + time.strftime("_%d_%m_%Y_%H_%M_%S_")
-    info = StreamInfo(stream_name, 'EEG', freqs, sps, 'float32', stream_id)
+    info = StreamInfo(stream_name, 'EEG', freqs*nchan, sps, 'float32', stream_id)
     outlet = StreamOutlet(info)
     delay = 1.0/sps
     
@@ -223,6 +223,7 @@ def create_fake_spectro(name="",sps=10.,freqs=250, peaks=[14,15,18,60]):
             idx += 1
             tmp_sig = main_sin + 0.7*np.random.rand(freqs*2)
             fft = np.abs(np.fft.fft(tmp_sig))[:(freqs)]
+            fft = np.reshape([fft]*8, [-1])
             outlet.push_sample(fft)
     _thread = Thread(target=_target)
     _thread.start()

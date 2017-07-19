@@ -39,9 +39,9 @@ G_Pix_CanvasHeight = 800.
 G_Pix_GraphEdgeMargins = (75.,50.) # space from sides of graph to edge of canvas (w x h)
 G_Pix_GraphMargins = (75.,50.) # space between one graph and another graph (w x h)
 
-G_NumChannels = 8
-G_GraphCols = 4
-G_GraphRows = 2
+G_NumChannels = 64
+G_GraphCols = 8
+G_GraphRows = 8
 G_MaximumBufferSize = 1000 # in samples, NOT seconds
 
 # Calculated values

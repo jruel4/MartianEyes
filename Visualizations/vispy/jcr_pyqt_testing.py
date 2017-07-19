@@ -1,5 +1,19 @@
 # -*- coding: utf-8 -*-
 """
+Created on Sun Jul 16 01:12:32 2017
+
+@author: marzipan
+"""
+
+
+
+
+
+
+
+
+# -*- coding: utf-8 -*-
+"""
 Created on Sat Jul 15 23:46:01 2017
 
 @author: marzipan
@@ -11,7 +25,8 @@ Created on Sat Jul 15 23:46:01 2017
 import sys
 import numpy as np
 import time
-from vispy import app, scene
+from vispy import app as vp_app
+from vispy import scene
 
 
 from pylsl import StreamInlet, resolve_stream
@@ -32,7 +47,7 @@ G_NChanPlot_IDX = range(G_NChanPlot)
 
 G_FS = 250
 
-rows = 2
+rows = 4
 cols = 2
 
 G_MovingAverageLen = 1
@@ -133,12 +148,34 @@ def update(ev):
             viewboxes[i].camera.set_range(y= (max([min(sc_pos[i,:,1]),0]), max(sc_pos[i,:,1]) ) )
         last_upd = time.time()
 
-timer = app.Timer(iterations=100000)
-timer.connect(update)
-timer.start(0)
+import sys
+from PySide.QtCore import *
+from PySide.QtGui import * 
 
-time.sleep(0.5)
-canvas.show()
 
 if __name__ == '__main__' and sys.flags.interactive == 0:
-    app.run()
+
+    try:
+        qt_app = QApplication([])
+    except RuntimeError:
+        print "Qt Application Already Exists"
+        pass
+    
+    Window = QWidget()
+    Window.setGeometry(0,0,500,800)
+    Window.setWindowTitle("Multiplot")
+    Layout = QGridLayout()
+    Window.setLayout(Layout)
+    
+    Layout.addWidget(canvas.native, 0, 0) 
+    canvas.show()
+    canvas.measure_fps()
+    Window.show()
+    
+    a0 = vp_app.Application()
+    vp_app.use_app(a0)
+    timer = vp_app.Timer(iterations=100)
+    timer.connect(update)
+    timer.start(0)
+    
+    sys.exit(qt_app.exec_())

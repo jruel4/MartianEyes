@@ -10,7 +10,39 @@ import numpy as np
 import time
 
 from vispy import app, scene
+from vispy import color as colour #generate color map
 from pylsl import StreamInlet, resolve_stream
+
+'''
+generate color map
+input: freqs, corresponding to x-val of every point on the graph
+'''
+def generate_color_map(freqs):
+    # Here for reference (below)
+    #  color.get_color_names()
+
+
+    # This maps colors from (f1,f2]
+    cmap_range = [
+        [freqs[0]-1,3,'brown'],
+        [3,6,'yellow'],
+        [6,9,'orange'],
+        [9,12,'red'],
+        [12,16,'violet'],
+        [16,20,'blue'],
+        [20,24, 'turquoise'],
+        [24,32, 'lightgreen'],
+        [32,40, 'green'],
+        [40,freqs[-1]+1, 'greenyellow']
+    ]
+
+    # Translate colormap to actual rbga values
+    cmap = list()
+    for freq in freqs:
+        for freq_range in cmap_range:
+            if (freq > freq_range[0]) and (freq <= freq_range[1]):
+                cmap.append(colour.Color(freq_range[2]).rgba)
+    return cmap
 
 streams = list()
 def select_stream():
@@ -25,34 +57,79 @@ inlet = select_stream()
 
 
 
-# Parameters
-G_FS = 250 # rate at which the data was sampled (originally)
-G_RemoveDC = False #remove the first element of the periodogram - this is the DC component
-G_RemoveMirror = False #remove the second half of the spectrogram (mirror)
+'''
+PARAMETERS
+'''
+
+# corresponds to freq values of each point
+#G_Freqs = np.linspace(0,125,G_LenSigPlot+1) #useful for fft periodo
+G_Freqs = np.arange(8,14,1) # useful for wavelets
+#G_Freqs = [10,15,20,25] # useful for wavelets
+
+# rate at which the data was sampled (originally)
+G_FS = 250 
+
+#remove the first element of the periodogram - this is the DC component
+G_RemoveDC = False
+
+#remove the second half of the periodogram (mirror)
+G_RemoveMirror = False 
+
+#set to 1 if no MA is desired
 G_MovingAverageLen = 1000
 
 
-
-# This is the number of channels we are receiving
+# the number of channels we are receiving
 G_NChanIn = 8
 
 # This is the number of channels to display
 G_NChanPlot = 7
+
+# rows x columns, must match up with G_NChanPlot
 rows = 7
 cols = 1
 
-# dynamically get length
+# dynamically get input length
 sample_tst, _ts = inlet.pull_sample()
 G_LengthOfInput = len(sample_tst)
+G_LenSigIn = G_LengthOfInput/G_NChanIn
+
+# adjust plotting length if removing components
+G_LenSigPlot = G_LenSigIn
+if G_RemoveMirror:
+    G_LenSigPlot=G_LenSigPlot/2
+if G_RemoveDC:
+    G_LenSigPlot=G_LenSigPlot-1
+
+# array below represents x/y combos for each point
+pos = np.zeros((G_NChanPlot, G_LenSigPlot, 2), dtype=np.float32)
+pos[:,:, 0] = G_Freqs # x vals (freqs)
+
+color = generate_color_map(G_Freqs)
 
 
-# Calculate the frequencies
-#G_Freqs = np.linspace(0, G_FS, G_LengthOfInput)
 
-# Moving average length must be greater than 1
+
+# TODO
+once = True
+buflen = 5000
+conv2uv = False
+conv2uvfromv = True
+
+i2v = ( (4.5 / (2**23 - 1)) / 24)
+
+G_MABuffer = np.zeros([buflen,G_NChanIn,G_LenSigIn])
+last_upd = 0
+# END TODO
+
+
+
+
+'''
+Asserts / checks
+'''
+
 assert G_MovingAverageLen >= 1
-
-# Length of input should be evenly divisible by number of channels we expect
 if G_LengthOfInput % G_NChanIn:
     raise RuntimeError("Number of expected channels and length of input do not match, G_NChanIn: ", G_NChanIn, " len(input): ", G_LengthOfInput)
 
@@ -60,51 +137,7 @@ if G_LengthOfInput % G_NChanIn:
 if (G_LengthOfInput/G_NChanIn) % 2:
     print "Length of periodogram is odd, len: ", G_LengthOfInput/G_NChanIn, ", may not need to remove mirror or DC component"
 
-# vertex positions of data to draw
-G_LenSigIn = G_LengthOfInput/G_NChanIn
-
-G_LenSigPlot = G_LenSigIn
-if G_RemoveMirror:
-    G_LenSigPlot=G_LenSigPlot/2
-if G_RemoveDC:
-    G_LenSigPlot=G_LenSigPlot-1
-
-
-
-#G_Freqs = np.linspace(0,125,G_LenSigPlot+1)
-#G_Freqs = G_Freqs[1:]
-G_Freqs = np.arange(8,14,1)
-#G_Freqs = [10,15,20,25]
 assert len(G_Freqs) == G_LenSigPlot
-
-
-pos = np.zeros((G_NChanPlot, G_LenSigPlot, 2), dtype=np.float32)
-pos[:,:, 0] = G_Freqs # x vals (freqs)
-
-# Here for reference (below)
-#  color.get_color_names()
-
-from vispy import color as colour
-# This maps colors from (f1,f2]
-color_map = [
-[G_Freqs[0]-1,3,'brown'],
-[3,6,'yellow'],
-[6,9,'orange'],
-[9,12,'red'],
-[12,16,'violet'],
-[16,20,'blue'],
-[20,24, 'turquoise'],
-[24,32, 'lightgreen'],
-[32,40, 'green'],
-[40,G_Freqs[-1]+1, 'greenyellow']
-]
-
-# Translate colormap to actual rbga values
-color = list()
-for freq in G_Freqs:
-    for freq_range in color_map:
-        if (freq > freq_range[0]) and (freq <= freq_range[1]):
-            color.append(colour.Color(freq_range[2]).rgba)
 
 
 canvas = scene.SceneCanvas(keys=None, show=False)
@@ -130,18 +163,13 @@ for r in range(rows):
             # add a line plot inside the viewbox
             lines.append(scene.Line(pos[c + r*cols,:,:], color, parent=viewboxes[c + r*cols].scene))
 
+'''
 
-once = True
-buflen = 5000
-conv2uv = False
-conv2uvfromv = True
-
-i2v = ( (4.5 / (2**23 - 1)) / 24)
-
-G_MABuffer = np.zeros([buflen,G_NChanIn,G_LenSigIn])
-last_upd = 0
+'''
+eva=list()
 def update(ev):
-    global pos, color, lines,inlet,conv2uv,once,viewboxes,G_MABuffer,last_upd,i2v
+    global pos, color, lines,inlet,conv2uv,once,viewboxes,G_MABuffer,last_upd,i2v,eva
+    eva.append(ev)
     # Samples is a #samples x nchan*nfreqs
     (samples, timestamps) = inlet.pull_chunk(max_samples=len(G_MABuffer)-1)
 
@@ -192,7 +220,6 @@ def update(ev):
         if once: print "New samples, DC cleaved: ", new_samples[:,1:].shape
         new_samples = new_samples[:,1:]
         
-
     if once: print "Pos[:,:,1], : ", pos[:,:,1].shape
     pos[:,:,1] = new_samples[range(G_NChanPlot),:]
 
@@ -219,7 +246,7 @@ def update(ev):
 if __name__ == '__main__' and sys.flags.interactive == 0:
     app.run()
     
-    timer = app.Timer(iterations=10000)
+    timer = app.Timer(interval=0.01 ,iterations=-1)
     timer.connect(update)
     timer.start(0)
     
